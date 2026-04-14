@@ -22,6 +22,7 @@ client/dist/
 
 # Database
 *.db
+!freelancer.db
 *.sqlite
 *.sqlite3
 

@@ -6,7 +6,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from config import settings
 from database import engine, Base
-from routes import clients, projects, tasks, time_entries
+from routes import auth, clients, projects, tasks, time_entries, dashboard
 
 # Import all models so Base.metadata knows about them
 import models  # noqa: F401
@@ -30,10 +30,12 @@ app.add_middleware(
 )
 
 # Register routers
+app.include_router(auth.router)
 app.include_router(clients.router)
 app.include_router(projects.router)
 app.include_router(tasks.router)
 app.include_router(time_entries.router)
+app.include_router(dashboard.router)
 
 
 @app.get("/api/health")

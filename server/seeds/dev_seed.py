@@ -38,11 +38,13 @@ def seed():
         db.commit()
 
         # --- User ---
+        import bcrypt
+        real_hash = bcrypt.hashpw("demo123".encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
         user = User(
             id="11111111-1111-1111-1111-111111111111",
-            username="freelancer",
-            email="freelancer@example.com",
-            password_hash="$2b$12$placeholder_hash_not_real_but_valid_length_padding",
+            username="reviewer",
+            email="demo@example.com",
+            password_hash=real_hash,
         )
         db.add(user)
         db.flush()

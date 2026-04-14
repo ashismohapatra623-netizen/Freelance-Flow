@@ -11,15 +11,9 @@ from database import get_db
 from models.task import Task
 from models.time_entry import TimeEntry
 from schemas.time_entry import TimeEntryCreate, TimeEntryStop, TimeEntryResponse
+from middleware.auth import get_current_user_id
 
 router = APIRouter(prefix="/api/time-entries", tags=["time-entries"])
-
-# Phase 1: hardcoded user_id
-HARDCODED_USER_ID = "11111111-1111-1111-1111-111111111111"
-
-
-def get_current_user_id() -> str:
-    return HARDCODED_USER_ID
 
 
 @router.post("", response_model=TimeEntryResponse, status_code=201)

@@ -11,15 +11,9 @@ from models.project import Project
 from models.task import Task
 from models.time_entry import TimeEntry
 from schemas.task import TaskCreate, TaskUpdate, TaskResponse, TaskSummaryResponse
+from middleware.auth import get_current_user_id
 
 router = APIRouter(prefix="/api/tasks", tags=["tasks"])
-
-# Phase 1: hardcoded user_id
-HARDCODED_USER_ID = "11111111-1111-1111-1111-111111111111"
-
-
-def get_current_user_id() -> str:
-    return HARDCODED_USER_ID
 
 
 def _compute_task_time(db: Session, task_id: str) -> int:
@@ -180,3 +174,124 @@ def get_task_summary(
         total_time_spent=total_time,
         time_entry_count=entry_count,
     )
+
+
+# ═══════════════════════════════════════════════
+# Phase 3: Business Logic Endpoints
+# ═══════════════════════════════════════════════
+
+@router.patch("/{task_id}/status")
+def change_task_status(
+    task_id: str,
+    data: dict,
+    db: Session = Depends(get_db),
+    user_id: str = Depends(get_current_user_id),
+):
+    """
+    Change task status with validation.
+    All transitions between todo/in-progress/done are allowed.
+    If status → done and timer is running, auto-stop the timer.
+    If status → in-progress and no active timer, suggest starting one.
+    """
+    from datetime import datetime
+
+    task = db.query(Task).filter(Task.id == task_id, Task.user_id == user_id).first()
+    if not task:
+        raise HTTPException(status_code=404, detail="Task not found")
+
+    new_status = data.get("status")
+    valid_statuses = ["todo", "in-progress", "done"]
+    if new_status not in valid_statuses:
+        raise HTTPException(status_code=422, detail=f"Invalid status. Must be one of: {valid_statuses}")
+
+    old_status = task.status
+    metadata = {}
+
+    # If changing to 'done', auto-stop any running timer
+    if new_status == "done":
+        running_entry = (
+            db.query(TimeEntry)
+            .filter(TimeEntry.task_id == task.id, TimeEntry.ended_at.is_(None))
+            .first()
+        )
+        if running_entry:
+            now = datetime.utcnow()
+            running_entry.ended_at = now
+            running_entry.duration_seconds = int((now - running_entry.started_at).total_seconds())
+            metadata["timer_stopped"] = True
+            metadata["duration_seconds"] = running_entry.duration_seconds
+
+    # If changing to 'in-progress', suggest starting timer if none running
+    if new_status == "in-progress":
+        running_entry = (
+            db.query(TimeEntry)
+            .filter(TimeEntry.task_id == task.id, TimeEntry.ended_at.is_(None))
+            .first()
+        )
+        if not running_entry:
+            metadata["suggest_start_timer"] = True
+
+    task.status = new_status
+    db.commit()
+    db.refresh(task)
+
+    response = _build_task_response(db, task).model_dump()
+    response["metadata"] = metadata
+    response["old_status"] = old_status
+    return response
+
+
+@router.patch("/{task_id}/today")
+def toggle_today(
+    task_id: str,
+    db: Session = Depends(get_db),
+    user_id: str = Depends(get_current_user_id),
+):
+    """Toggle the is_today flag for a task."""
+    task = db.query(Task).filter(Task.id == task_id, Task.user_id == user_id).first()
+    if not task:
+        raise HTTPException(status_code=404, detail="Task not found")
+
+    task.is_today = not task.is_today
+    db.commit()
+    db.refresh(task)
+
+    return _build_task_response(db, task)
+
+
+@router.get("/today/list", response_model=List[TaskResponse])
+def get_today_tasks(
+    db: Session = Depends(get_db),
+    user_id: str = Depends(get_current_user_id),
+):
+    """Get all tasks marked for today, grouped by status."""
+    tasks = (
+        db.query(Task)
+        .filter(Task.user_id == user_id, Task.is_today == True)
+        .order_by(Task.status, Task.created_at.desc())
+        .all()
+    )
+    return [_build_task_response(db, task) for task in tasks]
+
+
+@router.post("/today/bulk")
+def bulk_set_today(
+    data: dict,
+    db: Session = Depends(get_db),
+    user_id: str = Depends(get_current_user_id),
+):
+    """Set is_today=true for an array of task IDs."""
+    task_ids = data.get("task_ids", [])
+    if not isinstance(task_ids, list):
+        raise HTTPException(status_code=422, detail="task_ids must be an array")
+
+    updated = 0
+    for tid in task_ids:
+        task = db.query(Task).filter(Task.id == tid, Task.user_id == user_id).first()
+        if task:
+            task.is_today = True
+            updated += 1
+
+    db.commit()
+    return {"updated": updated, "total_requested": len(task_ids)}
+

@@ -12,25 +12,25 @@ from models.project import Project
 from models.task import Task
 from models.time_entry import TimeEntry
 from schemas.project import ProjectCreate, ProjectUpdate, ProjectResponse, ProjectListResponse
+from middleware.auth import get_current_user_id
 
 router = APIRouter(prefix="/api/projects", tags=["projects"])
 
-# Phase 1: hardcoded user_id
-HARDCODED_USER_ID = "11111111-1111-1111-1111-111111111111"
 
-
-def get_current_user_id() -> str:
-    return HARDCODED_USER_ID
-
-
-def _compute_project_hours(db: Session, project_id: str) -> float:
-    """Sum all time entry durations for a project's tasks."""
+def _compute_project_seconds(db: Session, project_id: str) -> int:
+    """Sum all time entry durations for a project's tasks (in seconds)."""
     total = (
         db.query(func.coalesce(func.sum(TimeEntry.duration_seconds), 0))
         .join(Task, TimeEntry.task_id == Task.id)
         .filter(Task.project_id == project_id)
         .scalar()
     )
+    return total or 0
+
+
+def _compute_project_hours(db: Session, project_id: str) -> float:
+    """Sum all time entry durations for a project's tasks (in hours)."""
+    total = _compute_project_seconds(db, project_id)
     return round(total / 3600, 2) if total else 0.0
 
 
@@ -210,3 +210,143 @@ def delete_project(
     db.delete(project)
     db.commit()
     return None
+
+
+# ═══════════════════════════════════════════════
+# Phase 3: Business Logic Endpoints
+# ═══════════════════════════════════════════════
+
+@router.patch("/{project_id}/status")
+def change_project_status(
+    project_id: str,
+    data: dict,
+    db: Session = Depends(get_db),
+    user_id: str = Depends(get_current_user_id),
+):
+    """
+    Change project status.
+    If set to 'completed', warn about incomplete tasks (don't block).
+    """
+    project = db.query(Project).filter(Project.id == project_id, Project.user_id == user_id).first()
+    if not project:
+        raise HTTPException(status_code=404, detail="Project not found")
+
+    new_status = data.get("status")
+    valid_statuses = ["active", "on-hold", "completed"]
+    if new_status not in valid_statuses:
+        raise HTTPException(status_code=422, detail=f"Invalid status. Must be one of: {valid_statuses}")
+
+    warnings = []
+
+    if new_status == "completed":
+        incomplete_count = (
+            db.query(func.count(Task.id))
+            .filter(Task.project_id == project.id, Task.status != "done")
+            .scalar()
+        )
+        if incomplete_count > 0:
+            warnings.append(f"{incomplete_count} task(s) are not yet done")
+
+    project.status = new_status
+    db.commit()
+    db.refresh(project)
+
+    client = db.query(Client).filter(Client.id == project.client_id).first()
+    task_count = db.query(func.count(Task.id)).filter(Task.project_id == project.id).scalar()
+    total_hours = _compute_project_hours(db, project.id)
+
+    response = ProjectResponse(
+        id=project.id,
+        user_id=project.user_id,
+        client_id=project.client_id,
+        client_name=client.name if client else "",
+        name=project.name,
+        description=project.description,
+        status=project.status,
+        deadline=project.deadline,
+        hourly_rate=project.hourly_rate,
+        is_billable=project.is_billable,
+        created_at=project.created_at,
+        updated_at=project.updated_at,
+        task_count=task_count,
+        total_hours=total_hours,
+    ).model_dump()
+
+    if warnings:
+        response["warnings"] = warnings
+
+    return response
+
+
+@router.get("/{project_id}/summary")
+def get_project_summary(
+    project_id: str,
+    db: Session = Depends(get_db),
+    user_id: str = Depends(get_current_user_id),
+):
+    """
+    Detailed project summary including:
+    - Project info + client name
+    - Task counts by status
+    - Total time spent
+    - Billable amount (hours * hourly_rate)
+    - Deadline status (approaching/overdue)
+    """
+    from datetime import date, timedelta
+
+    project = db.query(Project).filter(Project.id == project_id, Project.user_id == user_id).first()
+    if not project:
+        raise HTTPException(status_code=404, detail="Project not found")
+
+    client = db.query(Client).filter(Client.id == project.client_id).first()
+
+    # Task counts by status
+    total_tasks = db.query(func.count(Task.id)).filter(Task.project_id == project.id).scalar()
+    todo_count = db.query(func.count(Task.id)).filter(Task.project_id == project.id, Task.status == "todo").scalar()
+    in_progress_count = db.query(func.count(Task.id)).filter(Task.project_id == project.id, Task.status == "in-progress").scalar()
+    done_count = db.query(func.count(Task.id)).filter(Task.project_id == project.id, Task.status == "done").scalar()
+
+    # Total time
+    total_seconds = _compute_project_seconds(db, project.id)
+    total_hours = round(total_seconds / 3600, 2) if total_seconds else 0.0
+
+    # Billable amount
+    billable_amount = None
+    if project.is_billable and project.hourly_rate:
+        billable_amount = round(total_hours * project.hourly_rate, 2)
+
+    # Deadline status
+    today = date.today()
+    is_overdue = False
+    is_approaching = False
+    if project.deadline and project.status != "completed":
+        if project.deadline < today:
+            is_overdue = True
+        elif project.deadline <= today + timedelta(days=3):
+            is_approaching = True
+
+    return {
+        "project": {
+            "id": project.id,
+            "name": project.name,
+            "status": project.status,
+            "deadline": project.deadline.isoformat() if project.deadline else None,
+            "hourly_rate": project.hourly_rate,
+            "is_billable": project.is_billable,
+        },
+        "client_name": client.name if client else "",
+        "tasks": {
+            "total": total_tasks,
+            "todo": todo_count,
+            "in_progress": in_progress_count,
+            "done": done_count,
+        },
+        "total_seconds": total_seconds,
+        "total_hours": total_hours,
+        "billable_amount": billable_amount,
+        "deadline_status": {
+            "is_overdue": is_overdue,
+            "is_approaching": is_approaching,
+        },
+    }
+

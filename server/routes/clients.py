@@ -11,16 +11,9 @@ from database import get_db
 from models.client import Client
 from models.project import Project
 from schemas.client import ClientCreate, ClientUpdate, ClientResponse, ClientListResponse
+from middleware.auth import get_current_user_id
 
 router = APIRouter(prefix="/api/clients", tags=["clients"])
-
-# Phase 1: hardcoded user_id — will be replaced by auth middleware in Phase 2
-HARDCODED_USER_ID = "11111111-1111-1111-1111-111111111111"
-
-
-def get_current_user_id() -> str:
-    """Placeholder for auth — returns hardcoded user_id in Phase 1."""
-    return HARDCODED_USER_ID
 
 
 @router.get("", response_model=List[ClientListResponse])
