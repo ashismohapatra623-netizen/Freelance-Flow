@@ -1,9 +1,11 @@
 import axios from 'axios';
+import { API_URL } from '../config';
 
 const api = axios.create({
-  baseURL: '/api',
+  baseURL: `${API_URL}/api`,
   headers: { 'Content-Type': 'application/json' },
 });
+
 
 // Request interceptor — inject auth token
 api.interceptors.request.use((config) => {
