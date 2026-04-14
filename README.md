@@ -10,7 +10,7 @@ Whether you are tracking billable hours or mapping out project timelines, Freela
 
 The project is configured for deployment on Vercel. You can view the live demo here:
 
-**[[▶ Live Demo on Vercel](https://freelance-flow-rose.vercel.app/login)]**
+**[[▶ Live Demo on Vercel](https://freelance-flow-rose.vercel.app)]**
 
 If you are a reviewer, you can log in using the demo credentials provided right under the sign-in fields on the login page!
 
