@@ -1,5 +1,8 @@
 import axios from 'axios';
-import { API_URL } from '../config';
+
+const API_URL = import.meta.env.PROD 
+  ? 'https://freelance-flow-kuw6.onrender.com' 
+  : '';
 
 const api = axios.create({
   baseURL: `${API_URL}/api`,
