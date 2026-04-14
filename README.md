@@ -8,11 +8,13 @@ Whether you are tracking billable hours or mapping out project timelines, Freela
 
 ## 🌟 Live Demo
 
-The project is configured for deployment on Vercel. You can view the live demo here:
+The project is live and deployed for review. You can view it here:
 
-**[[▶ Live Demo on Vercel](https://freelance-flow-rose.vercel.app)]**
+**[▶ Live Demo on Vercel](https://freelance-flow-mu.vercel.app/)**
 
 If you are a reviewer, you can log in using the demo credentials provided right under the sign-in fields on the login page!
+
+> ⚠️ **Note:** The frontend is hosted on **Vercel** and the backend API is deployed on **Render.com** (free tier). Since Render.com spins down inactive services, **the first API call may take 30–60 seconds** to respond while the server wakes up. Subsequent requests should be fast. Thank you for your patience!
 
 ---
 
@@ -26,7 +28,7 @@ This project uses a modern, performant web stack:
 - **Backend:** FastAPI (Python)
 - **Database:** SQLite (managed via SQLAlchemy)
 - **Authentication:** JWT and Bcrypt
-- **Deployment Ready:** Vercel (Frontend & Serverless deployment integration)
+- **Deployment:** Vercel (Frontend) & Render.com (Backend)
 
 ---
 
@@ -128,3 +130,11 @@ While FreelanceFlow is fully functional, here is what we are thinking about addi
 ---
 
 *Thank you for reviewing FreelanceFlow! If you encounter any bugs during testing, feel free to submit an issue or reach out directly.*
+
+---
+
+## 📄 License
+
+This project is licensed under the **GNU General Public License v3.0 (GPL-3.0)**.
+
+You are free to use, modify, and distribute this software under the terms of the GPL. Any derivative works must also be licensed under the GPL. See the [LICENSE](LICENSE) file for full details.
